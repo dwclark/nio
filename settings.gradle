@@ -1,1 +1,1 @@
-include "echo-server"
+include "echo-server", "echo-client"

@@ -13,16 +13,18 @@ class EchoServer implements Runnable {
     public static final int BUFFERSIZE = 8192;
 
     private final ServerSocketChannel serverChannel;
+    private final Selector selector;
 
     public EchoServer(int port) {
         serverChannel = ServerSocketChannel.open();
         serverChannel.configureBlocking(false);
+        serverChannel.setOption(StandardSocketOptions.SO_REUSEADDR, true);
         serverChannel.socket().bind(new InetSocketAddress(port));
+        selector = Selector.open();
     }
 
     public void run() {
         try {
-            Selector selector = Selector.open();
             serverChannel.register(selector, serverChannel.validOps());
             while(selector.keys().size() > 0) {
                 int keyCount = selector.select(TIMEOUT); //blocking step
@@ -30,30 +32,27 @@ class EchoServer implements Runnable {
                 while(keysIter.hasNext()) {
                     SelectionKey key = keysIter.next();
                     keysIter.remove();
-                    if(!key.valid) {
-                        continue;
+
+                    if(key.valid && key.acceptable) {
+                        onAccept(key);
                     }
 
-                    if(key.acceptable) {
-                        acceptable(key);
+                    if(key.valid && key.readable) {
+                        onRead(key);
                     }
 
-                    if(key.readable) {
-                        readable(key);
-                    }
-
-                    if(key.writable) {
-                        writable(key);
+                    if(key.valid && key.writable) {
+                        onWrite(key);
                     }
                 }
             }
         }
         catch(IOException ioe) {
-            //exit loop
+            ioe.printStackTrace();
         }
     }
 
-    public void acceptable(SelectionKey key) {
+    public void onAccept(SelectionKey key) {
         ServerSocketChannel srvChannel = (ServerSocketChannel) key.channel();
         SocketChannel channel = srvChannel.accept();
         channel.configureBlocking(false);
@@ -61,7 +60,7 @@ class EchoServer implements Runnable {
                          ByteBuffer.allocateDirect(BUFFERSIZE));
     }
 
-    public void readable(SelectionKey key) {
+    public void onRead(SelectionKey key) {
         SocketChannel channel = (SocketChannel) key.channel();
         ByteBuffer buffer = (ByteBuffer) key.attachment();
         int count = channel.read(buffer);
@@ -74,25 +73,27 @@ class EchoServer implements Runnable {
 
             key.cancel();
             channel.close();
+            return;
         }
 
-        writable(key);
+        onWrite(key);
     }
 
-    public void writable(SelectionKey key) {
+    public void onWrite(SelectionKey key) {
         SocketChannel channel = (SocketChannel) key.channel();
         ByteBuffer buffer = (ByteBuffer) key.attachment();
         buffer.flip();
         int count = channel.write(buffer);
         buffer.compact();
-        int ops = key.interestOps();
         if(buffer.hasRemaining()) {
-            ops |= SelectionKey.OP_WRITE;
+            key.interestOps(key.interestOps() | SelectionKey.OP_WRITE);
         }
         else {
-            ops &= ~SelectionKey.OP_WRITE;
+            key.interestOps(key.interestOps() & ~SelectionKey.OP_WRITE);
         }
+    }
 
-        key.interestOps(ops);
+    public static void main(String[] args) {
+        new EchoServer(10_000).run();
     }
 }

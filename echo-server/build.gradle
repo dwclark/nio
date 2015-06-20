@@ -1,1 +1,4 @@
 //echo-server build file
+
+apply plugin: 'application'
+mainClassName = 'dclark.nio.EchoServer'

@@ -1,0 +1,4 @@
+//echo-client build file
+
+apply plugin: 'application'
+mainClassName = 'dclark.nio.EchoConsole'
